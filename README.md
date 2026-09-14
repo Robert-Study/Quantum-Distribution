@@ -266,6 +266,17 @@ python -m unittest discover -s tests -v
 
 Tests check entropy endpoints and the numerical threshold, known fibre-loss values, photon probabilities, input validation, reproducibility and simulated error rates against independent analytical expectations. GitHub Actions runs the tests and figure generation, then retains the resulting CSVs, figures and software versions as a downloadable <code>bb84-results</code> artifact for 30 days.
 
+### Verified example run
+
+[GitHub Actions run 1](https://github.com/Robert-Study/Quantum-Distribution/actions/runs/34860618160) executed the companion on Python 3.12 with 100,000 signals per sweep point, base seed 42 and zero added noise.
+
+| Intercepted fraction | Sifted signals | Errors after sifting | Measured QBER | Analytical QBER |
+|---|---:|---:|---:|---:|
+| 0% | 50,334 | 0 | 0% | 0% |
+| 100% | 49,896 | 12,508 | 25.07% | 25% |
+
+The numerical threshold was **0.1100278644**. All eight tests passed, and figure generation completed successfully. These are simulated and calculated results, not measurements from optical hardware. The run artifact contains the figure files, full sweep, software versions and parameters.
+
 ### Model limits
 
 This code was added as a numerical companion to the review. It is not the source of experimental data in the paper, and it does not implement a deployable QKD system.
