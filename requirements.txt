@@ -1,2 +1,2 @@
-# Optional: used only by the --plot flag.
+# Needed for --plot.
 matplotlib>=3.8,<4
