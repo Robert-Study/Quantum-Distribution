@@ -1,7 +1,7 @@
-"""Reproduce ideal BB84 benchmarks from the accompanying QKD review.
+"""BB84 intercept-resend simulation and the calculations used in the paper.
 
-This is a classical Monte Carlo model of BB84 measurement statistics.
-It does not implement a secure key exchange or generate application keys.
+Samples measurement probabilities with a seeded PRNG. For study only;
+authentication, reconciliation and privacy amplification are not implemented.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ def probability(value: float, name: str = "probability", maximum: float = 1.0) -
 
 
 def binary_entropy(p: float) -> float:
-    """Binary entropy in bits, with the continuous endpoint values."""
+    """Binary entropy in bits; use the limiting values at 0 and 1."""
     probability(p)
     if p in (0.0, 1.0):
         return 0.0
@@ -29,10 +29,10 @@ def binary_entropy(p: float) -> float:
 
 
 def secret_fraction_bound(qber: float) -> float:
-    """Signed 1 - 2h2(Q) benchmark; a negative bound certifies no key.
+    """Asymptotic 1 - 2h2(Q), per sifted bit; negative values are kept.
 
-    Assumes asymptotic single-photon BB84, symmetric bit/phase errors,
-    and ideal one-way error correction. This is not a finite-key estimate.
+    Assumes single photons, equal bit/phase errors and ideal one-way
+    reconciliation. No finite-key correction is included.
     """
     probability(qber, "QBER", maximum=0.5)
     return 1.0 - 2.0 * binary_entropy(qber)
@@ -51,7 +51,7 @@ def key_threshold() -> float:
 
 
 def fibre_transmittance(distance_km: float, attenuation_db_per_km: float = 0.2) -> float:
-    """Fibre-only transmission; excludes detector/coupling losses and noise."""
+    """Transmission through the fibre, excluding coupling and detector losses."""
     for name, value in (("distance", distance_km), ("attenuation", attenuation_db_per_km)):
         if not math.isfinite(value) or value < 0.0:
             raise ValueError(f"{name} must be finite and non-negative")
@@ -73,7 +73,7 @@ def photon_probabilities(mu: float) -> tuple[float, float, float]:
 
 
 def expected_qber(intercept_fraction: float, noise: float = 0.0) -> float:
-    """Independent intercept-resend errors followed by a classical bit flip."""
+    """QBER after intercept-resend and an independent flip at Bob."""
     probability(intercept_fraction, "intercept fraction")
     probability(noise, "noise", maximum=0.5)
     attack_error = intercept_fraction / 4.0
@@ -81,7 +81,7 @@ def expected_qber(intercept_fraction: float, noise: float = 0.0) -> float:
 
 
 def wilson_interval(errors: int, total: int) -> tuple[float, float]:
-    """Approximate 95% binomial interval, not a QKD secrecy bound."""
+    """95% Wilson interval for the sampled error rate."""
     if not isinstance(total, int) or not isinstance(errors, int) or total < 1 or not 0 <= errors <= total:
         raise ValueError("counts must be integers with 0 <= errors <= total and total > 0")
     z = 1.959963984540054
@@ -121,17 +121,16 @@ class Simulation:
 
 def simulate(pulses: int = 100_000, intercept_fraction: float = 1.0,
              noise: float = 0.0, seed: int = 42) -> Simulation:
-    """Sample preparation, Eve's measurement/resend, Bob's measurement, and sifting.
+    """Simulate ideal detected photons, then count errors after basis sifting.
 
-    Basis 0 is Z; basis 1 is X. Wrong-basis measurements are uniformly random.
-    Each trial uses an ideal detected single photon; optical loss is modelled
-    separately by fibre_transmittance(), not folded into this experiment.
+    Bases 0 and 1 represent Z and X. A wrong-basis measurement returns a
+    random bit. Loss is calculated separately by fibre_transmittance().
     """
     if isinstance(pulses, bool) or not isinstance(pulses, int) or pulses < 1:
         raise ValueError("pulses must be a positive integer")
     probability(intercept_fraction, "intercept fraction")
     probability(noise, "noise", maximum=0.5)
-    rng = random.Random(seed)  # Reproducibility only; not cryptographic randomness.
+    rng = random.Random(seed)
     intercepted = sifted = errors = 0
     for _ in range(pulses):
         alice_bit, alice_basis, bob_basis = (rng.randrange(2) for _ in range(3))
@@ -176,9 +175,9 @@ def make_plot(output: Path, sweep: list[dict], entropy_rows: list[dict],
         [100 * max(0.0, r["qber_ci_high"] - r["qber"]) for r in measured],
     ]
     axis.plot([100 * r["intercept_fraction"] for r in sweep],
-              [100 * r["expected_qber"] for r in sweep], color=navy, label="Analytical expectation")
-    axis.errorbar(x, y, yerr=errors, fmt="o", capsize=3, color=teal, label="Simulation / 95% Wilson interval")
-    axis.set(title="A  Interception and sifted-key errors", xlabel="Signals intercepted (%)", ylabel="QBER (%)")
+              [100 * r["expected_qber"] for r in sweep], color=navy, label="Expected QBER")
+    axis.errorbar(x, y, yerr=errors, fmt="o", capsize=3, color=teal, label="Simulation (95% Wilson interval)")
+    axis.set(title="A  Intercept-resend", xlabel="Signals intercepted (%)", ylabel="QBER (%)")
     axis.legend(fontsize=8)
 
     axis = axes[0, 1]
@@ -187,7 +186,7 @@ def make_plot(output: Path, sweep: list[dict], entropy_rows: list[dict],
     axis.axhline(0, color="grey", linewidth=0.8)
     axis.axvline(100 * key_threshold(), color=orange, linestyle="--",
                  label=f"Zero at {100 * key_threshold():.2f}%")
-    axis.set(title="B  Ideal asymptotic benchmark", xlabel="QBER (%)", ylabel="1 - 2h2(Q), per sifted bit")
+    axis.set(title="B  Asymptotic secret fraction", xlabel="QBER (%)", ylabel="1 - 2h2(Q), per sifted bit")
     axis.legend(fontsize=8)
 
     axis = axes[1, 0]
@@ -204,7 +203,7 @@ def make_plot(output: Path, sweep: list[dict], entropy_rows: list[dict],
     axis.legend(fontsize=8)
     for axis in axes.flat:
         axis.grid(alpha=0.15)
-    figure.suptitle("BB84: connecting the probability model to engineering limits", fontsize=15, weight="bold")
+    figure.suptitle("BB84 calculations", fontsize=15, weight="bold")
     figure.savefig(output / "bb84-benchmarks.png", dpi=180)
     figure.savefig(output / "bb84-benchmarks.svg")
     plt.close(figure)
@@ -248,17 +247,17 @@ def main() -> None:
                             ("fibre-loss.csv", fibre_rows), ("photon-statistics.csv", photon_rows)):
         write_csv(args.output / filename, rows)
     summary = {
-        "model": "Ideal BB84 measurement statistics; not a secure key exchange",
+        "model": "BB84 with intercept-resend and independent bit-flip noise",
         "pulses_per_sweep_point": args.pulses, "base_seed": args.seed, "noise": args.noise,
         "seed_rule": "base_seed + sweep index",
         "ideal_asymptotic_qber_threshold": key_threshold(),
         "no_interception": sweep[0], "full_interception": sweep[-1],
         "assumptions": [
-            "Independent unbiased Z/X basis choices and ideal single-photon measurements",
-            "Classical seeded pseudorandom sampling, not quantum hardware",
-            "Optical loss and photon statistics are separate analytical calculations",
-            "No authentication, parameter-estimation sacrifice, error correction, or privacy amplification",
-            "Wilson intervals are sampling summaries, not finite-key secrecy guarantees",
+            "Unbiased Z/X bases; ideal detected single photons",
+            "Seeded classical pseudorandom sampling",
+            "Loss and photon statistics calculated separately",
+            "No authentication, parameter estimation, reconciliation or privacy amplification",
+            "Wilson intervals describe sampling uncertainty only",
         ],
     }
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
