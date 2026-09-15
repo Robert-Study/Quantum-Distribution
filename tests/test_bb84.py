@@ -1,4 +1,4 @@
-"""Analytical and statistical checks for the educational BB84 model."""
+"""Checks against BB84 error probabilities and the paper's reference values."""
 import math
 import unittest
 
@@ -21,8 +21,7 @@ class BB84Tests(unittest.TestCase):
         for fraction, noise in ((0.4, 0.0), (1.0, 0.0), (0.0, 0.05), (0.8, 0.03)):
             with self.subTest(fraction=fraction, noise=noise):
                 result = simulate(60_000, fraction, noise, seed=2026)
-                # Independently derived probability of one, but not both,
-                # of an interception error and an independent channel flip.
+                # An error survives when exactly one of the two flips occurs.
                 p = fraction / 4 * (1 - noise) + (1 - fraction / 4) * noise
                 sigma = math.sqrt(p * (1 - p) / result.sifted)
                 self.assertLess(abs(result.qber - p), 6 * sigma)
